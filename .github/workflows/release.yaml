@@ -13,9 +13,9 @@ jobs:
       - name: compare git tag with pyproject metadata
         run: |
           PUSHED_TAG=${GITHUB_REF##*/}
-          CURR_VER=$( grep version pyproject.toml | head -n 1 | awk '{print $3}' | tr -d '"' )
+          CURR_VER=$( grep version Cargo.toml | head -n 1 | awk '{print $3}' | tr -d '"' )
           if [[ "${PUSHED_TAG}" != "v${CURR_VER}" ]]; then
-            echo "pyproject metadata has version set to ${CURR_VER}, but got pushed tag ${PUSHED_TAG}."
+            echo "Cargo metadata has version set to ${CURR_VER}, but got pushed tag ${PUSHED_TAG}."
             exit 1
           fi
 
