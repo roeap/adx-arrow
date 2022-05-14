@@ -1,0 +1,98 @@
+name: Python Release Build
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  validate-release-tag:
+    name: Validate git tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: compare git tag with pyproject metadata
+        run: |
+          PUSHED_TAG=${GITHUB_REF##*/}
+          CURR_VER=$( grep version pyproject.toml | head -n 1 | awk '{print $3}' | tr -d '"' )
+          if [[ "${PUSHED_TAG}" != "v${CURR_VER}" ]]; then
+            echo "pyproject metadata has version set to ${CURR_VER}, but got pushed tag ${PUSHED_TAG}."
+            exit 1
+          fi
+
+  build-python-mac-win:
+    name: Mac/Win
+    needs: [validate-release-tag]
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10"]
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin==0.12.10
+
+      - name: Build Python package
+        run: maturin build --release --strip --cargo-extra-args="--locked"
+
+      - name: List Windows wheels
+        if: matrix.os == 'windows-latest'
+        run: dir target\wheels\
+
+      - name: List Mac wheels
+        if: matrix.os != 'windows-latest'
+        run: find target/wheels/
+
+      - name: Archive wheels
+        uses: actions/upload-artifact@v2
+        with:
+          name: dist
+          path: target/wheels/*
+
+  build-manylinux:
+    needs: [validate-release-tag]
+    name: Manylinux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build wheels
+        run: |
+          export RUSTFLAGS='-C target-cpu=skylake'
+          docker run --rm -v $(pwd):/io \
+            --workdir /io \
+            konstin2/maturin:v0.12.10 \
+            build --release --manylinux 2010 --cargo-extra-args="--locked"
+
+      - name: Archive wheels
+        uses: actions/upload-artifact@v2
+        with:
+          name: dist
+          path: target/wheels/*
+
+  release:
+    name: Publish in PyPI
+    needs: [build-manylinux, build-python-mac-win]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v2
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
