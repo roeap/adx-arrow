@@ -71,12 +71,15 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Build build-image
+        run: docker build --build-arg MATURIN_VERSION=v0.12.10 -t buildimage .
+
       - name: Build wheels
         run: |
           export RUSTFLAGS='-C target-cpu=skylake'
           docker run --rm -v $(pwd):/io \
             --workdir /io \
-            konstin2/maturin:v0.12.10 \
+            buildimage \
             build --release --manylinux 2010 --cargo-extra-args="--locked"
 
       - name: Archive wheels
